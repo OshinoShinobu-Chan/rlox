@@ -1,4 +1,4 @@
-// TODO
+//! Scanner for rlox
 use crate::error::Error;
 use crate::token::Token;
 use crate::token_type::TokenType;
@@ -6,6 +6,7 @@ use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::str::Chars;
 
+/// Map to identify keywords
 static KEYWORDS: Lazy<HashMap<&str, TokenType>> = Lazy::new(|| {
     HashMap::from([
         ("and", TokenType::And),
@@ -27,6 +28,7 @@ static KEYWORDS: Lazy<HashMap<&str, TokenType>> = Lazy::new(|| {
     ])
 });
 
+/// Scanner
 pub struct Scanner<'a> {
     source: &'a String,
     tokens: Vec<Token>,
@@ -37,6 +39,9 @@ pub struct Scanner<'a> {
     line: usize,
 }
 
+/// An iterator to handle the stream of source code.
+///
+/// May support utf-8, but is not tested, so it's now only stable for ascii
 #[derive(Clone)]
 pub struct Position<'a> {
     iter: Chars<'a>,
@@ -59,6 +64,9 @@ impl<'a> Position<'a> {
     pub fn is_end(&self) -> bool {
         self.index >= self.end
     }
+    /// Get the string of [a, b)(if a is in the front of b).
+    ///
+    /// And the method will consume the former iterator
     pub fn get_between(a: &mut Self, b: &mut Self) -> Option<String> {
         if a.index == a.end || b.index == b.end {
             return None;
@@ -75,6 +83,7 @@ impl<'a> Position<'a> {
         }
         Some(ret)
     }
+    /// peek that return '\0' if meet the end
     pub fn peek(&self) -> char {
         if self.current.is_none() {
             '\0'
@@ -82,6 +91,7 @@ impl<'a> Position<'a> {
             self.current.unwrap()
         }
     }
+    /// peek that return `None` if meet the end
     pub fn peek_opt(&self) -> Option<char> {
         self.current
     }
@@ -114,15 +124,16 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn scan_tokens(&'a mut self) -> Result<&Vec<Token>, Error> {
+    pub fn scan_tokens(&'a mut self) -> Result<Vec<Token>, Error> {
         while !self.current.is_end() {
             self.start = self.current.clone();
             if let Err(e) = self.scan_token() {
                 return Err(e);
             }
         }
+        self.add_token(TokenType::Eof);
 
-        Ok(&self.tokens)
+        Ok(self.tokens.clone())
     }
 
     fn scan_token(&mut self) -> Result<(), Error> {
@@ -191,11 +202,11 @@ impl<'a> Scanner<'a> {
                 } else if is_valid_start(c) {
                     self.take_identifier(c);
                 } else {
-                    return Err(Error {
-                        line: self.line,
-                        loc: "".to_string(),
-                        message: "Unexpected character.".to_string(),
-                    });
+                    return Err(Error::new(
+                        self.line,
+                        "".to_string(),
+                        "Unexpected character.".to_string(),
+                    ));
                 }
             }
             None => self.add_token(TokenType::Eof),
@@ -204,9 +215,18 @@ impl<'a> Scanner<'a> {
     }
 
     fn add_token(&mut self, token_type: TokenType) {
+        let text = if token_type != TokenType::Eof {
+            if let Some(t) = Position::get_between(&mut self.start, &mut self.current) {
+                t
+            } else {
+                "".to_string()
+            }
+        } else {
+            "".to_string()
+        };
         self.tokens.push(Token {
             token_type,
-            lexeme: "".to_string(),
+            lexeme: text,
             line: self.line,
         })
     }
@@ -244,11 +264,11 @@ impl<'a> Scanner<'a> {
         }
 
         if self.current.is_end() {
-            return Err(Error {
-                line: self.line,
-                loc: "".to_string(),
-                message: "Unterminated string.".to_string(),
-            });
+            return Err(Error::new(
+                self.line,
+                "".to_string(),
+                "Unterminated string.".to_string(),
+            ));
         }
 
         self.current.next();

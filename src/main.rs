@@ -1,14 +1,41 @@
+#![deny(unused_must_use)]
+use builtin::Builtin;
 use clap::Parser;
+use environment::Environment;
+use error::Error;
+use once_cell::sync::Lazy;
+use scanner::Scanner;
+use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
+use std::rc::Rc;
+use syntax::Expr;
+use syntax::Value;
+use token::Token;
 
+mod builtin;
+mod environment;
 mod error;
+mod parser;
 mod scanner;
+mod statement;
+mod syntax;
 mod token;
 mod token_type;
+extern crate rlox_macro;
 
-use error::Error;
-use scanner::Scanner;
+pub static mut ENVIRONMENT: Lazy<Environment> = Lazy::new(|| Environment::new(None));
+pub static mut LOCALS: Lazy<HashMap<*const dyn Expr, usize>> = Lazy::new(|| HashMap::new());
+pub static mut CLOCK: Builtin = Builtin {
+    arity: 0,
+    call: |_: Vec<Box<syntax::Value>>| {
+        let time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs_f64();
+        Ok(Box::new(syntax::Value::Number(time)))
+    },
+};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -50,14 +77,94 @@ fn run_prompt() {
 }
 
 fn run(source: String) -> Result<(), Error> {
-    let mut scan = Scanner::new(&source);
-    let tokens = scan.scan_tokens();
-    if let Err(e) = tokens {
-        return Err(e);
+    unsafe {
+        ENVIRONMENT.define(
+            "clock".to_string(),
+            Box::new(Value::Builtin(Rc::new(CLOCK.clone()))),
+        );
     }
+    let mut scanner = Scanner::new(&source);
+    let tokens = scanner.scan_tokens()?;
 
-    for token in tokens.unwrap() {
-        print!("{:?}", token);
+    let mut parse = parser::Parser::new(tokens);
+    let ast = parse.parse()?;
+    let mut scopes = Scopes::new();
+    for stmt in ast.clone() {
+        stmt.resolve(&mut scopes)?;
+    }
+    for stmt in ast {
+        stmt.interpret()?;
+        // println!("{}", stmt);
     }
     Ok(())
+}
+
+#[derive(Clone)]
+pub enum FunctionType {
+    Function,
+}
+
+pub struct Scopes(Vec<HashMap<String, bool>>, Option<FunctionType>);
+
+impl Scopes {
+    pub fn new() -> Self {
+        Self(Vec::new(), None)
+    }
+
+    pub fn begin_scope(&mut self) {
+        self.0.push(HashMap::new());
+    }
+
+    pub fn end_scope(&mut self) {
+        self.0.pop();
+    }
+
+    pub fn declare(&mut self, name: Token) -> Result<(), Error> {
+        if !self.0.is_empty() {
+            let scope = self.0.last_mut().unwrap();
+            if scope.contains_key(&name.lexeme) {
+                return Err(Error::new(
+                    name.line,
+                    name.lexeme.clone(),
+                    "Variable with this name already declared in this scope".to_string(),
+                ));
+            }
+            scope.insert(name.lexeme, false);
+        }
+        Ok(())
+    }
+
+    pub fn define(&mut self, name: Token) {
+        if !self.0.is_empty() {
+            let scope = self.0.last_mut().unwrap();
+            scope.insert(name.lexeme, true);
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn peek(&self) -> Option<&HashMap<String, bool>> {
+        self.0.last()
+    }
+
+    pub fn resolve_local(&self, expr: *const dyn Expr, name: &Token) {
+        for i in (0..self.0.len()).rev() {
+            if self.0[i].contains_key(&name.lexeme) {
+                unsafe {
+                    LOCALS.insert(expr, self.0.len() - 1 - i);
+                }
+                return;
+            }
+        }
+    }
+
+    pub fn get_current_function(&self) -> Option<FunctionType> {
+        self.1.clone()
+    }
+
+    pub fn set_current_function(&mut self, function_type: FunctionType) {
+        self.1 = Some(function_type);
+    }
 }

@@ -1,0 +1,28 @@
+var start = clock();
+
+fun fib(n) {
+    if(n == 1 or n == 2) return 1;
+    return fib(n - 1) + fib(n - 2);
+}
+
+print fib(30);
+
+var end = clock();
+
+var a = "global";
+{
+  fun showA() {
+    print a;
+  }
+
+  showA();
+  var a = "block";
+  showA();
+  print a;
+}
+
+
+
+print start;
+print end;
+print end - start;
