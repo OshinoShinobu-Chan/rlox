@@ -1,5 +1,7 @@
 #![deny(unused_must_use)]
-use builtin::Builtin;
+use ast::expr::Expr;
+use ast::stmt::function::Builtin;
+use ast::value::Value;
 use clap::Parser;
 use environment::Environment;
 use error::Error;
@@ -9,17 +11,14 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::rc::Rc;
-use syntax::Expr;
-use syntax::Value;
 use token::Token;
+use token_type::TokenType;
 
-mod builtin;
+mod ast;
 mod environment;
 mod error;
 mod parser;
 mod scanner;
-mod statement;
-mod syntax;
 mod token;
 mod token_type;
 extern crate rlox_macro;
@@ -28,12 +27,12 @@ pub static mut ENVIRONMENT: Lazy<Environment> = Lazy::new(|| Environment::new(No
 pub static mut LOCALS: Lazy<HashMap<*const dyn Expr, usize>> = Lazy::new(|| HashMap::new());
 pub static mut CLOCK: Builtin = Builtin {
     arity: 0,
-    call: |_: Vec<Box<syntax::Value>>| {
+    call: |_: Vec<Box<Value>>| {
         let time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs_f64();
-        Ok(Box::new(syntax::Value::Number(time)))
+        Ok(Box::new(Value::Number(time)))
     },
 };
 
@@ -99,16 +98,27 @@ fn run(source: String) -> Result<(), Error> {
     Ok(())
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum FunctionType {
     Function,
+    Method,
+    Initializer,
 }
 
-pub struct Scopes(Vec<HashMap<String, bool>>, Option<FunctionType>);
+#[derive(Clone, Copy)]
+pub enum ClassType {
+    Class,
+}
+
+pub struct Scopes(
+    Vec<HashMap<String, bool>>,
+    Option<FunctionType>,
+    Option<ClassType>,
+);
 
 impl Scopes {
     pub fn new() -> Self {
-        Self(Vec::new(), None)
+        Self(Vec::new(), None, None)
     }
 
     pub fn begin_scope(&mut self) {
@@ -149,6 +159,10 @@ impl Scopes {
         self.0.last()
     }
 
+    pub fn peek_mut(&mut self) -> Option<&mut HashMap<String, bool>> {
+        self.0.last_mut()
+    }
+
     pub fn resolve_local(&self, expr: *const dyn Expr, name: &Token) {
         for i in (0..self.0.len()).rev() {
             if self.0[i].contains_key(&name.lexeme) {
@@ -161,10 +175,18 @@ impl Scopes {
     }
 
     pub fn get_current_function(&self) -> Option<FunctionType> {
-        self.1.clone()
+        self.1
     }
 
-    pub fn set_current_function(&mut self, function_type: FunctionType) {
-        self.1 = Some(function_type);
+    pub fn set_current_function(&mut self, function_type: Option<FunctionType>) {
+        self.1 = function_type;
+    }
+
+    pub fn get_current_class(&self) -> Option<ClassType> {
+        self.2
+    }
+
+    pub fn set_current_class(&mut self, class_type: Option<ClassType>) {
+        self.2 = class_type;
     }
 }

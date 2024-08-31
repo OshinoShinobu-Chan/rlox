@@ -1,9 +1,9 @@
 //! Parser
 use std::rc::Rc;
 
+use crate::ast::expr::*;
+use crate::ast::stmt::*;
 use crate::error::Error;
-use crate::statement::*;
-use crate::syntax::*;
 use crate::token::Token;
 use crate::token_type::TokenType;
 
@@ -51,6 +51,8 @@ impl Parser {
             result = self.var_declaration();
         } else if self.is_match(vec![TokenType::Fun]) {
             result = self.function("function");
+        } else if self.is_match(vec![TokenType::Class]) {
+            result = self.class_declaration();
         } else {
             result = self.statement();
         }
@@ -60,10 +62,25 @@ impl Parser {
         result
     }
 
+    pub fn class_declaration(&mut self) -> Result<Rc<dyn Stmt>, Error> {
+        let name = self.consume(TokenType::Identifier("".to_string()), "Expect class name")?;
+        self.consume(TokenType::LeftBrace, "Expect '{' before class body")?;
+        let mut methods = Vec::new();
+        while !self.check(TokenType::RightBrace) && !self.is_end() {
+            let fun = self.function("method")?;
+            let function = unsafe { Rc::from_raw(Rc::into_raw(fun) as *const Function) };
+            methods.push(function);
+        }
+
+        self.consume(TokenType::RightBrace, "Expect '}' after class body")?;
+        Ok(Rc::new(Class { name, methods }))
+    }
+
     pub fn function(&mut self, kind: &str) -> Result<Rc<dyn Stmt>, Error> {
         let name = self.consume(
             TokenType::Identifier("".to_string()),
-            ("Expect ".to_string() + kind + " name").as_str(),
+            ("Expect ".to_string() + kind + " name, but find '" + &self.peek().lexeme + "'")
+                .as_str(),
         )?;
         self.consume(
             TokenType::LeftParen,
@@ -98,6 +115,7 @@ impl Parser {
                     name,
                     params,
                     body: body_ptr,
+                    is_initializer: false,
                 }))
             }
         } else {
@@ -129,7 +147,7 @@ impl Parser {
             TokenType::Semicolon,
             "Expect ';' after variable declaration",
         )?;
-        Ok(Rc::new(crate::statement::Variable {
+        Ok(Rc::new(VarDecl {
             name,
             initializer: Some(initializer),
         }))
@@ -160,7 +178,7 @@ impl Parser {
             value = Some(self.expression()?);
         }
         self.consume(TokenType::Semicolon, "Expect ';' after return value")?;
-        Ok(Rc::new(Return { keyword, value }))
+        Ok(Rc::new(ReturnExpr { keyword, value }))
     }
 
     pub fn for_statement(&mut self) -> Result<Rc<dyn Stmt>, Error> {
@@ -209,7 +227,7 @@ impl Parser {
             }));
         }
 
-        body = Rc::new(While {
+        body = Rc::new(WhileExpr {
             condition: condition.unwrap(),
             body,
         });
@@ -234,7 +252,7 @@ impl Parser {
         let condition = self.expression()?;
         self.consume(TokenType::RightParen, "Expect ')' after condition")?;
         let body = self.statement()?;
-        Ok(Rc::new(While { condition, body }))
+        Ok(Rc::new(WhileExpr { condition, body }))
     }
 
     pub fn block(&mut self) -> Result<Rc<dyn Stmt>, Error> {
@@ -261,7 +279,7 @@ impl Parser {
         if self.is_match(vec![TokenType::Else]) {
             else_branch = Some(self.statement()?);
         }
-        Ok(Rc::new(If {
+        Ok(Rc::new(IfExpr {
             condition,
             then_branch,
             else_branch,
@@ -278,9 +296,16 @@ impl Parser {
         if self.is_match(vec![TokenType::Equal]) {
             let equals = self.previous();
             let value = self.assignment()?;
-            if expr.type_name() == std::any::type_name::<crate::syntax::Variable>() {
-                let expr_ptr = Rc::into_raw(expr) as *const crate::syntax::Variable;
-                return Ok(Rc::new(crate::syntax::Assignment {
+            if expr.type_name() == std::any::type_name::<crate::ast::expr::VarExpr>() {
+                let expr_ptr = Rc::into_raw(expr) as *const crate::ast::expr::VarExpr;
+                return Ok(Rc::new(crate::ast::expr::Assignment {
+                    name: unsafe { (*expr_ptr).name.clone() },
+                    value,
+                }));
+            } else if expr.type_name() == std::any::type_name::<crate::ast::expr::Get>() {
+                let expr_ptr = Rc::into_raw(expr) as *const crate::ast::expr::Get;
+                return Ok(Rc::new(crate::ast::expr::Set {
+                    object: unsafe { (*expr_ptr).object.clone() },
                     name: unsafe { (*expr_ptr).name.clone() },
                     value,
                 }));
@@ -350,6 +375,12 @@ impl Parser {
         loop {
             if self.is_match(vec![TokenType::LeftParen]) {
                 expr = self.finish_call(expr)?;
+            } else if self.is_match(vec![TokenType::Dot]) {
+                let name = self.consume(
+                    TokenType::Identifier("".to_string()),
+                    "Expect property name after '.'",
+                )?;
+                expr = Rc::new(Get { object: expr, name });
             } else {
                 break;
             }
@@ -404,8 +435,12 @@ impl Parser {
             self.consume(TokenType::RightParen, "Expect ')' after expression")?;
             Ok(Rc::new(Grouping { expression: expr }))
         } else if self.is_match(vec![TokenType::Identifier("".to_string())]) {
-            Ok(Rc::new(crate::syntax::Variable {
+            Ok(Rc::new(crate::ast::expr::VarExpr {
                 name: self.previous(),
+            }))
+        } else if self.is_match(vec![TokenType::This]) {
+            Ok(Rc::new(crate::ast::expr::This {
+                keyword: self.previous(),
             }))
         } else {
             Err(Error::report(

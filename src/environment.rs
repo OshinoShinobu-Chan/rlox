@@ -1,6 +1,4 @@
-use crate::error::Error;
-use crate::syntax::Value;
-use crate::token::Token;
+use crate::{Error, Token, Value};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -130,10 +128,9 @@ impl Environment {
     pub fn look_up_variable(
         &self,
         name: Token,
-        expr: Rc<dyn crate::syntax::Expr>,
+        expr: *const dyn crate::ast::Expr,
     ) -> Result<Box<Value>, Error> {
-        let distance =
-            unsafe { crate::LOCALS.get(&(Rc::as_ptr(&expr) as *const dyn crate::syntax::Expr)) };
+        let distance = unsafe { crate::LOCALS.get(&expr) };
         if let Some(distance) = distance {
             self.get_at(*distance, name)
         } else {

@@ -1,13 +1,21 @@
-var start = clock();
-
-fun fib(n) {
-    if(n == 1 or n == 2) return 1;
-    return fib(n - 1) + fib(n - 2);
+class Bacon {
+  init(a) {
+    if (a == Nil) {
+      return;
+    }
+    this.a = a;
+    return "test";
+  }
+  eat() {
+    print this.a;
+    print this;
+  }
 }
 
-print fib(30);
-
-var end = clock();
+var b = Bacon("egg");
+b.eat();
+print b.init(42).init("hahaha");
+print b.a;
 
 var a = "global";
 {
@@ -18,11 +26,4 @@ var a = "global";
   showA();
   var a = "block";
   showA();
-  print a;
 }
-
-
-
-print start;
-print end;
-print end - start;
