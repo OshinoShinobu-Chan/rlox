@@ -26,6 +26,8 @@ pub mod set;
 pub use set::Set;
 pub mod this;
 pub use this::This;
+pub mod super_expr;
+pub use super_expr::SuperExpr;
 
 pub trait Expr: std::fmt::Display + std::fmt::Debug + Resolver {
     fn eval(&self) -> Result<Box<Value>, Error>;

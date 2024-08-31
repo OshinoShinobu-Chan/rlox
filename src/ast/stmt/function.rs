@@ -28,7 +28,7 @@ impl std::fmt::Display for Function {
 impl Stmt for Function {
     fn interpret(&self) -> Result<(), crate::error::Error> {
         unsafe {
-            let function = Value::Fun(Rc::new(self.clone()), None);
+            let function = Value::Fun(Rc::new(self.clone()), None, None);
 
             crate::ENVIRONMENT.define(self.name.lexeme.clone(), Box::new(function));
         }

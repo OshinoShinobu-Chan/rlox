@@ -1,4 +1,4 @@
-use crate::ast::stmt::{Class, Function, Instance};
+use crate::ast::stmt::{Function, Instance};
 use crate::{Builtin, Environment, Error, Token, TokenType};
 use once_cell::sync::Lazy;
 use std::cell::RefCell;
@@ -16,11 +16,16 @@ pub enum Value {
     Number(f64),
     String(String),
     Boolean(bool),
-    Fun(Rc<Function>, Option<Rc<RefCell<Instance>>>),
+    Fun(
+        Rc<Function>,
+        Option<Rc<RefCell<Instance>>>,
+        Option<Box<Value>>,
+    ),
     Builtin(Rc<Builtin>),
     Class {
-        class: Rc<Class>,
+        class: String,
         methods: HashMap<String, Box<Value>>,
+        super_class: Option<Box<Value>>,
     },
     Instance(Rc<RefCell<Instance>>),
     Nil,
@@ -29,40 +34,89 @@ pub enum Value {
 impl Value {
     pub fn bind(&mut self, instance: Rc<RefCell<Instance>>) {
         match self {
-            Value::Fun(fun, _) => {
-                *self = Value::Fun(fun.clone(), Some(instance));
+            Value::Fun(fun, _, super_) => {
+                *self = Value::Fun(fun.clone(), Some(instance), super_.clone());
             }
             _ => {}
+        }
+    }
+    pub fn is_class(&self) -> bool {
+        match self {
+            Value::Class {
+                class: _,
+                methods: _,
+                super_class: _,
+            } => true,
+            _ => false,
+        }
+    }
+    pub fn is_nil(&self) -> bool {
+        match self {
+            Value::Nil => true,
+            _ => false,
+        }
+    }
+    pub fn get_method(&self, name: &str) -> Option<Box<Value>> {
+        match self {
+            Value::Class {
+                class: _,
+                methods,
+                super_class,
+            } => {
+                if methods.contains_key(name) {
+                    methods.get(name).cloned()
+                } else if let Some(super_class) = super_class {
+                    super_class.get_method(name)
+                } else {
+                    None
+                }
+            }
+            _ => None,
         }
     }
 }
 
 impl LoxCallable for Value {
     fn arity(&self) -> usize {
-        if let Value::Fun(fun, _) = self {
+        if let Value::Fun(fun, _, _) = self {
             fun.params.len()
-        } else if let Value::Class { class: _, methods } = self {
+        } else if let Value::Class {
+            class: _,
+            methods,
+            super_class: _,
+        } = self
+        {
             let initializer = methods.get("init");
             if let Some(initializer) = initializer {
                 initializer.arity()
             } else {
                 0
             }
+        } else if let Value::Builtin(builtin) = self {
+            builtin.arity
         } else {
             0
         }
     }
 
     fn call(&self, arguments: Vec<Box<Value>>) -> Result<Box<Value>, Error> {
-        if let Value::Fun(fun, this) = self {
+        if let Value::Fun(fun, this, super_) = self {
             unsafe {
                 // create a new environment for the function
                 let previous = Rc::new(RefCell::new(crate::ENVIRONMENT.clone()));
 
+                // bind super to the environment
+                if let Some(super_) = super_ {
+                    crate::ENVIRONMENT = Lazy::new(|| Environment::new(None));
+                    crate::ENVIRONMENT.set_enclosing(Some(previous.clone()));
+                    crate::ENVIRONMENT.define("super".to_string(), super_.clone());
+                }
+
+                let super_outer = Rc::new(RefCell::new(crate::ENVIRONMENT.clone()));
                 // bind this to the environment
                 if this.is_some() {
                     crate::ENVIRONMENT = Lazy::new(|| Environment::new(None));
-                    crate::ENVIRONMENT.set_enclosing(Some(previous.clone()));
+                    crate::ENVIRONMENT.set_enclosing(Some(super_outer.clone()));
                     crate::ENVIRONMENT.define(
                         "this".to_string(),
                         Box::new(Value::Instance(this.clone().unwrap())),
@@ -108,11 +162,17 @@ impl LoxCallable for Value {
             }
         } else if let Value::Builtin(builtin) = self {
             builtin.call(arguments)
-        } else if let Value::Class { class, methods } = self {
+        } else if let Value::Class {
+            class,
+            methods,
+            super_class,
+        } = self
+        {
             let mut instance = Instance {
                 class: class.clone(),
                 fields: HashMap::new(),
                 methods: methods.clone(),
+                super_class: super_class.clone(),
             };
             let initializer = instance.methods.get_mut("init").cloned();
             let instance = Rc::new(RefCell::new(instance));
@@ -132,13 +192,14 @@ impl LoxCallable for Value {
     }
 
     fn is_callable(&self) -> bool {
-        if let Value::Fun(_, _) = self {
+        if let Value::Fun(_, _, _) = self {
             true
         } else if let Value::Builtin(_) = self {
             true
         } else if let Value::Class {
             class: _,
             methods: _,
+            super_class: _,
         } = self
         {
             true
@@ -244,9 +305,13 @@ impl std::fmt::Display for Value {
             Value::String(s) => write!(f, "{}", s),
             Value::Boolean(b) => write!(f, "{}", b),
             Value::Nil => write!(f, "Nil"),
-            Value::Fun(fun, _) => write!(f, "{}", fun),
+            Value::Fun(fun, _, _) => write!(f, "{}", fun),
             Value::Builtin(_) => write!(f, "<builtin fn>"),
-            Value::Class { class, methods: _ } => write!(f, "{}", class),
+            Value::Class {
+                class,
+                methods: _,
+                super_class: _,
+            } => write!(f, "{}", class),
             Value::Instance(instance) => write!(f, "{}", instance.borrow()),
         }
     }

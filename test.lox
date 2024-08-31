@@ -1,29 +1,28 @@
-class Bacon {
-  init(a) {
-    if (a == Nil) {
-      return;
-    }
+var start = clock();
+class Doughnut {
+  cook(a) {
     this.a = a;
-    return "test";
-  }
-  eat() {
     print this.a;
-    print this;
+    print "Fry until golden brown.";
+  }
+  listA() {
+    print this.a;
+  }
+  getA() {
+    return this.a;
   }
 }
 
-var b = Bacon("egg");
-b.eat();
-print b.init(42).init("hahaha");
-print b.a;
-
-var a = "global";
-{
-  fun showA() {
-    print a;
+class BostonCream < Doughnut {
+  cook() {
+    super.cook(42);
+    print "Pipe full of custard and coat with chocolate.";
   }
-
-  showA();
-  var a = "block";
-  showA();
 }
+
+var x = BostonCream();
+x.cook();
+x.listA();
+x.listA();
+var end = clock();
+print "time = " + str(end - start);

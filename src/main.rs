@@ -15,6 +15,7 @@ use token::Token;
 use token_type::TokenType;
 
 mod ast;
+mod builtins;
 mod environment;
 mod error;
 mod parser;
@@ -23,18 +24,11 @@ mod token;
 mod token_type;
 extern crate rlox_macro;
 
+pub use builtins::*;
+
 pub static mut ENVIRONMENT: Lazy<Environment> = Lazy::new(|| Environment::new(None));
 pub static mut LOCALS: Lazy<HashMap<*const dyn Expr, usize>> = Lazy::new(|| HashMap::new());
-pub static mut CLOCK: Builtin = Builtin {
-    arity: 0,
-    call: |_: Vec<Box<Value>>| {
-        let time = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs_f64();
-        Ok(Box::new(Value::Number(time)))
-    },
-};
+pub static BUILTINS: [(&str, &Builtin); 2] = [("clock", &CLOCK), ("str", &STR)];
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -76,12 +70,10 @@ fn run_prompt() {
 }
 
 fn run(source: String) -> Result<(), Error> {
-    unsafe {
-        ENVIRONMENT.define(
-            "clock".to_string(),
-            Box::new(Value::Builtin(Rc::new(CLOCK.clone()))),
-        );
+    for builtin in BUILTINS.iter() {
+        define_builtin(builtin.0, builtin.1.clone());
     }
+
     let mut scanner = Scanner::new(&source);
     let tokens = scanner.scan_tokens()?;
 
@@ -92,10 +84,16 @@ fn run(source: String) -> Result<(), Error> {
         stmt.resolve(&mut scopes)?;
     }
     for stmt in ast {
-        stmt.interpret()?;
         // println!("{}", stmt);
+        stmt.interpret()?;
     }
     Ok(())
+}
+
+fn define_builtin(name: &str, builtin: Builtin) {
+    unsafe {
+        ENVIRONMENT.define(name.to_string(), Box::new(Value::Builtin(Rc::new(builtin))));
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -105,9 +103,10 @@ pub enum FunctionType {
     Initializer,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ClassType {
     Class,
+    SubClass,
 }
 
 pub struct Scopes(

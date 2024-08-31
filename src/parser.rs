@@ -64,6 +64,16 @@ impl Parser {
 
     pub fn class_declaration(&mut self) -> Result<Rc<dyn Stmt>, Error> {
         let name = self.consume(TokenType::Identifier("".to_string()), "Expect class name")?;
+        let mut super_class = None;
+        if self.is_match(vec![TokenType::Less]) {
+            self.consume(
+                TokenType::Identifier("".to_string()),
+                "Expect superclass name",
+            )?;
+            super_class = Some(Rc::new(VarExpr {
+                name: self.previous(),
+            }));
+        }
         self.consume(TokenType::LeftBrace, "Expect '{' before class body")?;
         let mut methods = Vec::new();
         while !self.check(TokenType::RightBrace) && !self.is_end() {
@@ -73,7 +83,11 @@ impl Parser {
         }
 
         self.consume(TokenType::RightBrace, "Expect '}' after class body")?;
-        Ok(Rc::new(Class { name, methods }))
+        Ok(Rc::new(Class {
+            name,
+            methods,
+            super_class,
+        }))
     }
 
     pub fn function(&mut self, kind: &str) -> Result<Rc<dyn Stmt>, Error> {
@@ -435,13 +449,21 @@ impl Parser {
             self.consume(TokenType::RightParen, "Expect ')' after expression")?;
             Ok(Rc::new(Grouping { expression: expr }))
         } else if self.is_match(vec![TokenType::Identifier("".to_string())]) {
-            Ok(Rc::new(crate::ast::expr::VarExpr {
+            Ok(Rc::new(VarExpr {
                 name: self.previous(),
             }))
         } else if self.is_match(vec![TokenType::This]) {
-            Ok(Rc::new(crate::ast::expr::This {
+            Ok(Rc::new(This {
                 keyword: self.previous(),
             }))
+        } else if self.is_match(vec![TokenType::Super]) {
+            let keyword = self.previous();
+            self.consume(TokenType::Dot, "Expect '.' after 'super'")?;
+            let method = self.consume(
+                TokenType::Identifier("".to_string()),
+                "Expect superclass method name",
+            )?;
+            Ok(Rc::new(SuperExpr { keyword, method }))
         } else {
             Err(Error::report(
                 self.tokens[self.current].clone(),
