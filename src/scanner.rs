@@ -25,6 +25,8 @@ static KEYWORDS: Lazy<HashMap<&str, TokenType>> = Lazy::new(|| {
         ("true", TokenType::True),
         ("var", TokenType::Var),
         ("while", TokenType::While),
+        ("break", TokenType::Break),
+        ("continue", TokenType::Continue),
     ])
 });
 
@@ -142,6 +144,8 @@ impl<'a> Scanner<'a> {
             Some(')') => self.add_token(TokenType::RightParen),
             Some('{') => self.add_token(TokenType::LeftBrace),
             Some('}') => self.add_token(TokenType::RightBrace),
+            Some('[') => self.add_token(TokenType::LeftBracket),
+            Some(']') => self.add_token(TokenType::RightBracket),
             Some(',') => self.add_token(TokenType::Comma),
             Some('.') => self.add_token(TokenType::Dot),
             Some('-') => self.add_token(TokenType::Minus),

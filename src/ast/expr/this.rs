@@ -35,6 +35,10 @@ impl std::fmt::Debug for This {
 
 impl Expr for This {
     fn eval(&self) -> Result<Box<crate::ast::value::Value>, crate::error::Error> {
-        unsafe { crate::ENVIRONMENT.look_up_variable(self.keyword.clone(), self) }
+        unsafe {
+            crate::ENVIRONMENT
+                .borrow()
+                .look_up_variable(self.keyword.clone(), self)
+        }
     }
 }

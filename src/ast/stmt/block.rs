@@ -1,5 +1,5 @@
 use crate::ast::{Resolver, Stmt};
-use crate::{Environment, Error, Scopes, Token};
+use crate::{Environment, Error, Scopes};
 use once_cell::sync::Lazy;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -23,30 +23,16 @@ impl std::fmt::Display for Block {
 impl Stmt for Block {
     fn interpret(&self) -> Result<(), Error> {
         unsafe {
-            let previous = Rc::new(RefCell::new(crate::ENVIRONMENT.clone()));
+            let previous = Rc::new(RefCell::new(crate::ENVIRONMENT.borrow().clone()));
 
-            crate::ENVIRONMENT = Lazy::new(|| Environment::new(None));
-            crate::ENVIRONMENT.set_enclosing(Some(previous.clone()));
+            crate::ENVIRONMENT = Lazy::new(|| Rc::new(RefCell::new(Environment::new(None))));
+            crate::ENVIRONMENT
+                .borrow_mut()
+                .set_enclosing(Some(previous.clone()));
             for statement in &self.statements {
-                if let Err(e) = statement.interpret() {
-                    let mut ret_val = None;
-                    if e.message == "return" {
-                        ret_val = Some(crate::ENVIRONMENT.get(Token {
-                            token_type: crate::token_type::TokenType::Identifier(
-                                "return".to_string(),
-                            ),
-                            lexeme: "return".to_string(),
-                            line: 0,
-                        })?);
-                    }
-                    crate::ENVIRONMENT.from(crate::ENVIRONMENT.get_enclosing().unwrap());
-                    if let Some(value) = ret_val {
-                        crate::ENVIRONMENT.define("return".to_string(), value);
-                    }
-                    return Err(e);
-                }
+                statement.interpret()?;
             }
-            crate::ENVIRONMENT.from(crate::ENVIRONMENT.get_enclosing().unwrap());
+            crate::ENVIRONMENT.borrow_mut().from(previous);
             Ok(())
         }
     }

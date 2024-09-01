@@ -79,7 +79,9 @@ impl Resolver for Class {
 impl Stmt for Class {
     fn interpret(&self) -> Result<(), crate::error::Error> {
         unsafe {
-            crate::ENVIRONMENT.define(self.name.lexeme.clone(), Box::new(Value::Nil));
+            crate::ENVIRONMENT
+                .borrow_mut()
+                .define(self.name.lexeme.clone(), Box::new(Value::Nil));
             let mut super_class = None;
             if let Some(super_cls) = self.super_class.clone() {
                 super_class = Some(super_cls.eval()?);
@@ -106,7 +108,7 @@ impl Stmt for Class {
                 methods,
                 super_class,
             });
-            crate::ENVIRONMENT.assign(self.name.clone(), class)?;
+            crate::Environment::assign(crate::ENVIRONMENT.clone(), self.name.clone(), class)?;
         }
         Ok(())
     }
@@ -145,5 +147,48 @@ impl Instance {
 
     pub fn set(&mut self, name: &str, value: Box<Value>) {
         self.fields.insert(name.to_string(), value);
+    }
+
+    pub fn set_array(
+        &mut self,
+        name: &Token,
+        indeces: Vec<usize>,
+        value: Box<Value>,
+    ) -> Result<(), Error> {
+        let array = self.fields.get_mut(&name.lexeme).ok_or(Error::new(
+            name.line,
+            name.lexeme.to_string(),
+            "Undefined property".to_string(),
+        ))?;
+        if let Value::Array(array) = array.as_mut() {
+            let mut array = array;
+            for index in indeces.iter().take(indeces.len() - 1) {
+                if let Value::Array(a) = array
+                    .get_mut(*index)
+                    .ok_or(Error::new(
+                        name.line,
+                        name.lexeme.to_string(),
+                        "Index out of bounds".to_string(),
+                    ))?
+                    .as_mut()
+                {
+                    array = a;
+                } else {
+                    return Err(Error::new(
+                        name.line,
+                        name.lexeme.to_string(),
+                        "Index must be an array".to_string(),
+                    ));
+                }
+            }
+            array[*indeces.last().unwrap()] = value;
+            Ok(())
+        } else {
+            Err(Error::new(
+                name.line,
+                name.lexeme.to_string(),
+                "Not an array".to_string(),
+            ))
+        }
     }
 }

@@ -23,11 +23,15 @@ impl Stmt for ReturnExpr {
         if let Some(expr) = &self.value {
             let value = expr.eval()?;
             unsafe {
-                crate::ENVIRONMENT.define("return".to_string(), value);
+                crate::ENVIRONMENT
+                    .borrow_mut()
+                    .define("return".to_string(), value);
             }
         } else {
             unsafe {
-                crate::ENVIRONMENT.define("return".to_string(), Box::new(crate::Value::Nil));
+                crate::ENVIRONMENT
+                    .borrow_mut()
+                    .define("return".to_string(), Box::new(crate::Value::Nil));
             }
         }
         Err(Error {

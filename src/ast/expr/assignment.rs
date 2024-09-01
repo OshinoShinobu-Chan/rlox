@@ -1,5 +1,5 @@
 use crate::ast::{Expr, Resolver};
-use crate::{Error, Token, Value};
+use crate::{Environment, Error, Token, Value, ENVIRONMENT};
 use rlox_macro::Expr;
 use std::rc::Rc;
 
@@ -15,14 +15,20 @@ impl Expr for Assignment {
         let distance = unsafe { crate::LOCALS.get(&(self as *const dyn Expr)) };
         if let Some(distance) = distance {
             unsafe {
-                crate::ENVIRONMENT.assign_at(*distance, self.name.clone(), value.clone())?;
+                Environment::assign_at(
+                    crate::ENVIRONMENT.clone(),
+                    *distance,
+                    self.name.clone(),
+                    value.clone(),
+                )?;
             }
         } else {
             unsafe {
-                crate::ENVIRONMENT
-                    .get_global()
-                    .borrow_mut()
-                    .assign(self.name.clone(), value.clone())?;
+                Environment::assign(
+                    Environment::get_global_mut(ENVIRONMENT.clone()),
+                    self.name.clone(),
+                    value.clone(),
+                )?;
             }
         }
         Ok(value)

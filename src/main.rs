@@ -7,6 +7,7 @@ use environment::Environment;
 use error::Error;
 use once_cell::sync::Lazy;
 use scanner::Scanner;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
@@ -26,9 +27,16 @@ extern crate rlox_macro;
 
 pub use builtins::*;
 
-pub static mut ENVIRONMENT: Lazy<Environment> = Lazy::new(|| Environment::new(None));
+pub static mut ENVIRONMENT: Lazy<Rc<RefCell<Environment>>> =
+    Lazy::new(|| Rc::new(RefCell::new(Environment::new(None))));
 pub static mut LOCALS: Lazy<HashMap<*const dyn Expr, usize>> = Lazy::new(|| HashMap::new());
-pub static BUILTINS: [(&str, &Builtin); 2] = [("clock", &CLOCK), ("str", &STR)];
+pub static BUILTINS: [(&str, &Builtin); 5] = [
+    ("clock", &CLOCK),
+    ("str", &STR),
+    ("len", &LEN),
+    ("num", &NUM),
+    ("input", &INPUT),
+];
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -92,7 +100,9 @@ fn run(source: String) -> Result<(), Error> {
 
 fn define_builtin(name: &str, builtin: Builtin) {
     unsafe {
-        ENVIRONMENT.define(name.to_string(), Box::new(Value::Builtin(Rc::new(builtin))));
+        ENVIRONMENT
+            .borrow_mut()
+            .define(name.to_string(), Box::new(Value::Builtin(Rc::new(builtin))));
     }
 }
 

@@ -7,6 +7,8 @@ pub enum TokenType {
     RightParen,
     LeftBrace,
     RightBrace,
+    LeftBracket,
+    RightBracket,
     Comma,
     Dot,
     Minus,
@@ -47,6 +49,8 @@ pub enum TokenType {
     True,
     Var,
     While,
+    Break,
+    Continue,
 
     Eof,
 }

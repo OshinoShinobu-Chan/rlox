@@ -1,28 +1,3 @@
-var start = clock();
-class Doughnut {
-  cook(a) {
-    this.a = a;
-    print this.a;
-    print "Fry until golden brown.";
-  }
-  listA() {
-    print this.a;
-  }
-  getA() {
-    return this.a;
-  }
-}
-
-class BostonCream < Doughnut {
-  cook() {
-    super.cook(42);
-    print "Pipe full of custard and coat with chocolate.";
-  }
-}
-
-var x = BostonCream();
-x.cook();
-x.listA();
-x.listA();
-var end = clock();
-print "time = " + str(end - start);
+print "Please input some thing:";
+var a = input();
+print num(a) + 1;

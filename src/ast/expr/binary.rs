@@ -34,7 +34,7 @@ impl Expr for Binary {
                     Err(Error::new(
                         self.operator.line,
                         "+".to_string(),
-                        "Binary operator + only works with numbers or strings".to_string(),
+                        "Binary operator + only works with numbers , strings or arrays".to_string(),
                     ))
                 }
             }

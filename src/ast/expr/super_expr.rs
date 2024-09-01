@@ -33,8 +33,10 @@ impl Expr for SuperExpr {
     fn eval(&self) -> Result<Box<crate::ast::Value>, crate::error::Error> {
         unsafe {
             let distance = crate::LOCALS.get(&(self as *const dyn Expr)).unwrap();
-            let super_class = crate::ENVIRONMENT.get_at(*distance, self.keyword.clone())?;
-            let this = crate::ENVIRONMENT.get_at(
+            let super_class = crate::ENVIRONMENT
+                .borrow()
+                .get_at(*distance, self.keyword.clone())?;
+            let this = crate::ENVIRONMENT.borrow().get_at(
                 distance - 1,
                 Token {
                     token_type: TokenType::This,

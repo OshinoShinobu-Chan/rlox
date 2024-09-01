@@ -30,7 +30,9 @@ impl Stmt for Function {
         unsafe {
             let function = Value::Fun(Rc::new(self.clone()), None, None);
 
-            crate::ENVIRONMENT.define(self.name.lexeme.clone(), Box::new(function));
+            crate::ENVIRONMENT
+                .borrow_mut()
+                .define(self.name.lexeme.clone(), Box::new(function));
         }
         Ok(())
     }

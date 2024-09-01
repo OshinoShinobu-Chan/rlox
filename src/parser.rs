@@ -145,6 +145,8 @@ impl Parser {
             TokenType::Identifier("".to_string()),
             "Expect variable name",
         )?;
+
+        // handle variable declaration
         let initializer;
         if self.is_match(vec![TokenType::Equal]) {
             initializer = self.expression()?;
@@ -322,7 +324,60 @@ impl Parser {
                     object: unsafe { (*expr_ptr).object.clone() },
                     name: unsafe { (*expr_ptr).name.clone() },
                     value,
+                    indeces: None,
                 }));
+            } else if expr.type_name() == std::any::type_name::<crate::ast::expr::ArrayExpr>() {
+                let expr_ptr = Rc::into_raw(expr) as *const crate::ast::expr::ArrayExpr;
+                let mut indeces = Vec::new();
+                indeces.push(unsafe { (*expr_ptr).index.clone() });
+                let mut name = unsafe { (*expr_ptr).name.clone() };
+                while name.type_name() != std::any::type_name::<crate::ast::expr::VarExpr>()
+                    && name.type_name() != std::any::type_name::<crate::ast::expr::Get>()
+                {
+                    if name.type_name() != std::any::type_name::<crate::ast::expr::ArrayExpr>() {
+                        return Err(Error::report(
+                            equals,
+                            "Invalid assignment target".to_string(),
+                        ));
+                    }
+                    assert_eq!(
+                        name.type_name(),
+                        std::any::type_name::<crate::ast::expr::ArrayExpr>()
+                    );
+                    indeces.push(unsafe {
+                        (*(Rc::as_ptr(&name) as *const crate::ast::expr::ArrayExpr))
+                            .index
+                            .clone()
+                    });
+                    name = unsafe {
+                        (*(Rc::into_raw(name) as *const crate::ast::expr::ArrayExpr))
+                            .name
+                            .clone()
+                    };
+                }
+                if name.type_name() == std::any::type_name::<crate::ast::expr::Get>() {
+                    let name_ptr = Rc::into_raw(name) as *const crate::ast::expr::Get;
+                    return Ok(Rc::new(crate::ast::expr::Set {
+                        object: unsafe { (*name_ptr).object.clone() },
+                        name: unsafe { (*name_ptr).name.clone() },
+                        value,
+                        indeces: Some(indeces.into_iter().rev().collect()),
+                    }));
+                } else {
+                    assert_eq!(
+                        name.type_name(),
+                        std::any::type_name::<crate::ast::expr::VarExpr>()
+                    );
+                    return Ok(Rc::new(crate::ast::expr::ArrayAssignment {
+                        name: unsafe {
+                            (*(Rc::into_raw(name) as *const crate::ast::expr::VarExpr))
+                                .name
+                                .clone()
+                        },
+                        indeces: indeces.into_iter().rev().collect(),
+                        value,
+                    }));
+                }
             }
             println!(
                 "{}",
@@ -395,6 +450,14 @@ impl Parser {
                     "Expect property name after '.'",
                 )?;
                 expr = Rc::new(Get { object: expr, name });
+            } else if self.is_match(vec![TokenType::LeftBracket]) {
+                let index = self.expression()?;
+                self.consume(TokenType::RightBracket, "Expect ']' after index")?;
+                expr = Rc::new(ArrayExpr {
+                    name: expr,
+                    bracket: self.previous(),
+                    index,
+                });
             } else {
                 break;
             }
@@ -448,10 +511,19 @@ impl Parser {
             let expr = self.expression()?;
             self.consume(TokenType::RightParen, "Expect ')' after expression")?;
             Ok(Rc::new(Grouping { expression: expr }))
+        } else if self.is_match(vec![TokenType::LeftBracket]) {
+            let mut values = Vec::new();
+            if !self.check(TokenType::RightBracket) {
+                while {
+                    values.push(self.expression()?);
+                    self.is_match(vec![TokenType::Comma])
+                } {}
+            }
+            self.consume(TokenType::RightBracket, "Expect ']' after array elements")?;
+            Ok(Rc::new(Array { values }))
         } else if self.is_match(vec![TokenType::Identifier("".to_string())]) {
-            Ok(Rc::new(VarExpr {
-                name: self.previous(),
-            }))
+            let name = self.previous();
+            Ok(Rc::new(VarExpr { name }))
         } else if self.is_match(vec![TokenType::This]) {
             Ok(Rc::new(This {
                 keyword: self.previous(),

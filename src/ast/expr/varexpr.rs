@@ -16,7 +16,11 @@ impl std::fmt::Display for VarExpr {
 
 impl Expr for VarExpr {
     fn eval(&self) -> Result<Box<Value>, Error> {
-        unsafe { crate::ENVIRONMENT.look_up_variable(self.name.clone(), self) }
+        unsafe {
+            crate::ENVIRONMENT
+                .borrow()
+                .look_up_variable(self.name.clone(), self)
+        }
     }
 }
 

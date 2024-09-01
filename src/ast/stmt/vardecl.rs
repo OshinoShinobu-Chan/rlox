@@ -26,7 +26,9 @@ impl Stmt for VarDecl {
             None => Box::new(Value::Nil),
         };
         unsafe {
-            crate::ENVIRONMENT.define(self.name.lexeme.clone(), value);
+            crate::ENVIRONMENT
+                .borrow_mut()
+                .define(self.name.lexeme.clone(), value);
         }
         Ok(())
     }

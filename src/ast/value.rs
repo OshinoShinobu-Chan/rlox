@@ -28,6 +28,11 @@ pub enum Value {
         super_class: Option<Box<Value>>,
     },
     Instance(Rc<RefCell<Instance>>),
+    Array(Vec<Box<Value>>),
+    ArrayObject {
+        array: Vec<Box<Value>>,
+        index: usize,
+    },
     Nil,
 }
 
@@ -103,34 +108,46 @@ impl LoxCallable for Value {
         if let Value::Fun(fun, this, super_) = self {
             unsafe {
                 // create a new environment for the function
-                let previous = Rc::new(RefCell::new(crate::ENVIRONMENT.clone()));
+                let previous = Rc::new(RefCell::new(crate::ENVIRONMENT.borrow().clone()));
 
                 // bind super to the environment
                 if let Some(super_) = super_ {
-                    crate::ENVIRONMENT = Lazy::new(|| Environment::new(None));
-                    crate::ENVIRONMENT.set_enclosing(Some(previous.clone()));
-                    crate::ENVIRONMENT.define("super".to_string(), super_.clone());
+                    crate::ENVIRONMENT =
+                        Lazy::new(|| Rc::new(RefCell::new(Environment::new(None))));
+                    crate::ENVIRONMENT
+                        .borrow_mut()
+                        .set_enclosing(Some(previous.clone()));
+                    crate::ENVIRONMENT
+                        .borrow_mut()
+                        .define("super".to_string(), super_.clone());
                 }
 
-                let super_outer = Rc::new(RefCell::new(crate::ENVIRONMENT.clone()));
+                let super_outer = crate::ENVIRONMENT.borrow().clone();
                 // bind this to the environment
                 if this.is_some() {
-                    crate::ENVIRONMENT = Lazy::new(|| Environment::new(None));
-                    crate::ENVIRONMENT.set_enclosing(Some(super_outer.clone()));
-                    crate::ENVIRONMENT.define(
+                    crate::ENVIRONMENT =
+                        Lazy::new(|| Rc::new(RefCell::new(Environment::new(None))));
+                    crate::ENVIRONMENT
+                        .borrow_mut()
+                        .set_enclosing(Some(Rc::new(RefCell::new(super_outer.clone()))));
+                    crate::ENVIRONMENT.borrow_mut().define(
                         "this".to_string(),
                         Box::new(Value::Instance(this.clone().unwrap())),
                     );
                 }
 
-                let outer = Rc::new(RefCell::new(crate::ENVIRONMENT.clone()));
-                crate::ENVIRONMENT = Lazy::new(|| Environment::new(None));
-                crate::ENVIRONMENT.set_enclosing(Some(outer.clone()));
+                let outer = Rc::new(RefCell::new(crate::ENVIRONMENT.borrow().clone()));
+                crate::ENVIRONMENT = Lazy::new(|| Rc::new(RefCell::new(Environment::new(None))));
+                crate::ENVIRONMENT
+                    .borrow_mut()
+                    .set_enclosing(Some(outer.clone()));
 
                 // pass the arguments to the function
                 for (i, param) in fun.params.iter().enumerate() {
                     if let TokenType::Identifier(param_name) = param.token_type.clone() {
-                        crate::ENVIRONMENT.define(param_name, arguments[i].clone());
+                        crate::ENVIRONMENT
+                            .borrow_mut()
+                            .define(param_name, arguments[i].clone());
                     }
                 }
 
@@ -138,7 +155,7 @@ impl LoxCallable for Value {
                     // execute the function body
                     if let Err(e) = fun.body.excute() {
                         if e.message == "return".to_string() {
-                            crate::ENVIRONMENT.get(Token {
+                            crate::ENVIRONMENT.borrow().get(Token {
                                 token_type: TokenType::Identifier("return".to_string()),
                                 lexeme: "return".to_string(),
                                 line: 0,
@@ -151,13 +168,13 @@ impl LoxCallable for Value {
                     }
                 };
                 if fun.is_initializer {
-                    ret_val = crate::ENVIRONMENT.get(Token {
+                    ret_val = crate::ENVIRONMENT.borrow().get(Token {
                         token_type: TokenType::Identifier("this".to_string()),
                         lexeme: "this".to_string(),
                         line: 0,
                     });
                 }
-                crate::ENVIRONMENT.from(previous);
+                crate::ENVIRONMENT.borrow_mut().from(previous);
                 ret_val
             }
         } else if let Value::Builtin(builtin) = self {
@@ -216,6 +233,11 @@ impl std::ops::Add for Value {
         match (self, other) {
             (Value::Number(a), Value::Number(b)) => Ok(Box::new(Value::Number(a + b))),
             (Value::String(a), Value::String(b)) => Ok(Box::new(Value::String(a + &b))),
+            (Value::Array(a), Value::Array(b)) => {
+                let mut array = a.clone();
+                array.extend(b);
+                Ok(Box::new(Value::Array(array)))
+            }
             _ => Err(Error::new(0, "".to_string(), "".to_string())),
         }
     }
@@ -313,6 +335,8 @@ impl std::fmt::Display for Value {
                 super_class: _,
             } => write!(f, "{}", class),
             Value::Instance(instance) => write!(f, "{}", instance.borrow()),
+            Value::Array(a) => write!(f, "{:?}", a),
+            Value::ArrayObject { array, index } => write!(f, "{:?}[{}]", array, index),
         }
     }
 }

@@ -28,6 +28,12 @@ pub mod this;
 pub use this::This;
 pub mod super_expr;
 pub use super_expr::SuperExpr;
+pub mod array_expr;
+pub use array_expr::ArrayExpr;
+pub mod array;
+pub use array::Array;
+pub mod array_assignment;
+pub use array_assignment::ArrayAssignment;
 
 pub trait Expr: std::fmt::Display + std::fmt::Debug + Resolver {
     fn eval(&self) -> Result<Box<Value>, Error>;
